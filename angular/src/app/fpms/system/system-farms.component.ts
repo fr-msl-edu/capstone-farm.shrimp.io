@@ -1,0 +1,106 @@
+import { Component, OnInit, signal } from '@angular/core';
+import { FpmsPage } from '@shared/fpms/fpms-page';
+import { FPMS_IMPORTS } from '../shared-imports';
+import { unbroken } from '@shared/fpms/labels';
+
+@Component({
+    standalone: true,
+    imports: FPMS_IMPORTS,
+    template: `
+        <fpms-page-header title="Farms" subtitle="Registered farms and their accounts. System Administration."></fpms-page-header>
+        <section class="content px-2 pb-3">
+            <div class="container-fluid">
+                <div class="card">
+                    <div class="card-header"><h3 class="card-title">Farm registration</h3></div>
+                    <div class="card-body d-flex align-items-center flex-wrap">
+                        @if (registration() !== null) {
+                            <span class="mr-3">
+                                Registration is <fpms-badge [text]="registration() ? 'Open' : 'Closed'" [tone]="registration() ? 'success' : 'secondary'"></fpms-badge>
+                            </span>
+                            <button class="btn btn-sm" [class.btn-outline-danger]="registration()" [class.btn-outline-success]="!registration()" [disabled]="busy()" (click)="toggleRegistration()">
+                                {{ registration() ? 'Close registration' : 'Open registration' }}
+                            </button>
+                            <span class="text-muted ml-3">Open it only while onboarding a farm; the sign-in page shows the link when open.</span>
+                        }
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-body p-0 table-responsive">
+                        @if (!farms()) {
+                            <fpms-loading></fpms-loading>
+                        } @else {
+                            <table class="table table-hover mb-0">
+                                <thead><tr><th>Farm</th><th>Registered</th><th class="text-right">Accounts</th><th>Status</th><th><span class="sr-only">Actions</span></th></tr></thead>
+                                <tbody>
+                                    @for (x of farms(); track x.tenantId) {
+                                        <tr [class.text-muted]="!x.isActive">
+                                            <td><span class="fpms-pond-tag">{{ unbroken(x.farmCode) }}</span><div class="mt-1">{{ x.name }}</div></td>
+                                            <td class="text-nowrap">{{ x.creationTime | farmDate }}</td>
+                                            <td class="text-right">{{ x.userCount }}</td>
+                                            <td><fpms-badge [text]="x.isActive ? 'Active' : 'Inactive'" [tone]="x.isActive ? 'success' : 'secondary'"></fpms-badge></td>
+                                            <td class="text-right">
+                                                <div class="fpms-actions-stack">
+                                                    <a class="btn btn-sm btn-outline-primary" routerLink="/app/system/recovery" [queryParams]="{ tenantId: x.tenantId }" [attr.aria-label]="'Account recovery for ' + x.name">Account recovery</a>
+                                                    <button class="btn btn-sm" [class.btn-outline-danger]="x.isActive" [class.btn-outline-success]="!x.isActive" [disabled]="busy()" (click)="toggleFarm(x)">
+                                                        {{ x.isActive ? 'Deactivate' : 'Activate' }}
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    } @empty {
+                                        <tr><td colspan="5" class="text-center text-muted py-3">No farms registered.</td></tr>
+                                    }
+                                </tbody>
+                            </table>
+                        }
+                    </div>
+                </div>
+            </div>
+        </section>
+    `,
+})
+export class SystemFarmsComponent extends FpmsPage implements OnInit {
+    readonly unbroken = unbroken;
+    farms = signal<any[] | null>(null);
+    registration = signal<boolean | null>(null);
+
+    ngOnInit(): void {
+        this.load();
+    }
+
+    async load(): Promise<void> {
+        const [farms, reg] = await Promise.all([
+            this.api.get<any[]>('SystemFarm', 'GetFarms'),
+            this.api.get<any>('SystemFarm', 'GetRegistrationSetting'),
+        ]);
+        this.farms.set(farms);
+        this.registration.set(!!reg?.isEnabled);
+    }
+
+    async toggleRegistration(): Promise<void> {
+        const opening = !this.registration();
+        const ok = await this.confirm(
+            opening ? 'The sign-in page will show "Register a farm" to anyone who opens it. Close it again when the farm is registered.' : 'The sign-in page will no longer offer registration. Registered farms are not affected.',
+            opening ? 'Open farm registration?' : 'Close farm registration?',
+            { confirmText: opening ? 'Open registration' : 'Close registration', danger: opening }
+        );
+        if (!ok) {
+            return;
+        }
+        if (await this.act(() => this.api.post('SystemFarm', 'SetRegistrationSetting', { isEnabled: opening }))) {
+            this.notifySaved(opening ? 'Farm registration opened.' : 'Farm registration closed.');
+            this.load();
+        }
+    }
+
+    async toggleFarm(x: any): Promise<void> {
+        const message = x.isActive ? `Users of ${x.name} will not be able to sign in until the farm is activated again. No data is deleted.` : `Users of ${x.name} can sign in again.`;
+        if (!(await this.confirm(message, `${x.isActive ? 'Deactivate' : 'Activate'} ${x.name}?`, { confirmText: x.isActive ? 'Deactivate farm' : 'Activate farm', danger: x.isActive }))) {
+            return;
+        }
+        if (await this.act(() => this.api.post('SystemFarm', 'SetFarmActive', { tenantId: x.tenantId, isActive: !x.isActive }))) {
+            this.notifySaved(`${x.name} ${x.isActive ? 'deactivated' : 'activated'}.`);
+            this.load();
+        }
+    }
+}

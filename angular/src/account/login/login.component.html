@@ -1,0 +1,89 @@
+<div [@routerTransition]>
+    <h1 class="fpms-auth-title">Sign in</h1>
+    <p class="fpms-auth-lead">Use your farm code and username.</p>
+    <form novalidate autocomplete="off" #loginForm="ngForm" (ngSubmit)="login()">
+        <div class="form-group">
+            <label for="farmCode">Farm code</label>
+            <input
+                id="farmCode"
+                type="text"
+                class="form-control"
+                name="farmCode"
+                [(ngModel)]="authService.farmCode"
+                maxlength="64"
+                autocapitalize="off" />
+            <small class="form-text text-muted">Leave blank to sign in as the System Administrator.</small>
+        </div>
+        <div class="form-group">
+            <label for="userName">Username or email</label>
+            <input
+                id="userName"
+                type="text"
+                class="form-control"
+                name="userNameOrEmailAddress"
+                [(ngModel)]="authService.authenticateModel.userNameOrEmailAddress"
+                required
+                maxlength="256"
+                autocapitalize="off"
+                #userModel="ngModel" />
+            @if (userModel.invalid && userModel.touched) {
+                <small class="text-danger">Enter your username or email.</small>
+            }
+        </div>
+        <div class="form-group">
+            <label for="password">Password</label>
+            <input
+                id="password"
+                type="password"
+                class="form-control"
+                name="password"
+                [(ngModel)]="authService.authenticateModel.password"
+                required
+                maxlength="128"
+                #passwordModel="ngModel" />
+            @if (passwordModel.invalid && passwordModel.touched) {
+                <small class="text-danger">Enter your password.</small>
+            }
+        </div>
+        <div class="form-group d-flex align-items-center justify-content-between">
+            <div class="custom-control custom-checkbox">
+                <input type="checkbox" class="custom-control-input" id="rememberMe" name="rememberMe" [(ngModel)]="authService.rememberMe" />
+                <label for="rememberMe" class="custom-control-label">Keep me signed in on this device</label>
+            </div>
+        </div>
+        <button type="submit" class="btn btn-primary btn-block btn-lg" [disabled]="!loginForm.form.valid || submitting()">
+            @if (submitting()) {
+                <i class="fas fa-spinner fa-spin mr-1"></i>
+            }
+            Sign in
+        </button>
+    </form>
+    @if (devAccountGroups.length) {
+        <div class="border rounded p-2 mt-3 bg-light">
+            <p class="small text-muted mb-2"><i class="fas fa-bolt mr-1"></i>Quick sign-in (development only, seeded test accounts)</p>
+            @for (group of devAccountGroups; track group.name) {
+                <div class="mb-2">
+                    <div class="small font-weight-bold mb-1">{{ group.name }}</div>
+                    @for (account of group.accounts; track account.label) {
+                        <button
+                            type="button"
+                            class="btn btn-outline-secondary btn-sm mr-1 mb-1"
+                            [disabled]="submitting()"
+                            [title]="(account.farmCode || '(no farm code)') + ' / ' + account.userName"
+                            (click)="quickSignIn(account)">
+                            {{ account.label }}
+                        </button>
+                    }
+                </div>
+            }
+            <p class="small text-muted mb-0">Only the accounts seeded in the database you are running will work.</p>
+        </div>
+    }
+    <p class="text-muted small mt-3 mb-1">
+        Forgot your password? Ask a Farm Owner of your farm to reset it, or contact the System Administrator.
+    </p>
+    <p class="mb-0 mt-2 small"><a [routerLink]="['/']">What is Farm.Shrimp.io?</a></p>
+    @if (registrationEnabled()) {
+        <a class="btn btn-block fpms-auth-secondary mt-3" [routerLink]="['../register']">Register a farm account</a>
+    }
+</div>

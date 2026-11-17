@@ -1,0 +1,728 @@
+using Abp.Application.Services.Dto;
+using Abp.Authorization;
+using Abp.Domain.Repositories;
+using Abp.UI;
+using Capstone.Authorization;
+using Capstone.Common;
+using Capstone.Production.Dto;
+using Capstone.Domain;
+using Capstone.Production;
+using Microsoft.EntityFrameworkCore;
+using System;
+using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
+using System.Linq;
+using System.Threading.Tasks;
+
+namespace Capstone.Resources;
+
+public class FryDeliveryEditDto
+{
+    public Guid Id { get; set; }
+    public Guid HatcheryId { get; set; }
+
+    [Required, StringLength(FryDelivery.MaxBatchNumberLength)]
+    public string HatcheryBatchNumber { get; set; }
+
+    public DateOnly DeliveryDate { get; set; }
+
+    [Range(1, 60, ErrorMessage = "PL age must be between 1 and 60 days.")]
+    public int? PlAgeDays { get; set; }
+
+    [Range(1, FryDelivery.MaxPl, ErrorMessage = "PL counted at the farm must be between 1 and 10,000,000.")]
+    public long? PlReceived { get; set; }
+
+    public DateTime? ReceivedAt { get; set; }
+
+    [Range(1, FryDelivery.MaxPl, ErrorMessage = "PL ordered (PO) must be between 1 and 10,000,000.")]
+    public long? PlOrdered { get; set; }
+
+    [Range(0, 1000000000)]
+    public decimal? CostPhp { get; set; }
+
+    [StringLength(FryDelivery.MaxNotesLength)]
+    public string Notes { get; set; }
+
+    [StringLength(FryDelivery.MaxPermitLength)]
+    public string PlHealthCertificateNo { get; set; }
+
+    [StringLength(FryDelivery.MaxPermitLength)]
+    public string TransportPermitNo { get; set; }
+
+    [StringLength(FryDelivery.MaxPermitLength)]
+    public string SfscNo { get; set; }
+
+    public Production.TransportMode? TransportMode { get; set; }
+
+    public DateTime? TimePacked { get; set; }
+
+    public FryDeliveryStatus InitialStatus { get; set; } = FryDeliveryStatus.Ordered;
+
+    public string RowVersion { get; set; }
+}
+
+public class FryDeliveryDto
+{
+    public Guid Id { get; set; }
+    public Guid HatcheryId { get; set; }
+    public string HatcheryName { get; set; }
+    public string HatcheryShortCode { get; set; }
+    public string HatcheryBatchNumber { get; set; }
+    public DateOnly DeliveryDate { get; set; }
+    public int? PlAgeDays { get; set; }
+    public long? PlReceived { get; set; }
+    public DateTime? ReceivedAtUtc { get; set; }
+    public long? PlOrdered { get; set; }
+    public decimal? CostPhp { get; set; }
+    public string Notes { get; set; }
+    public string PlHealthCertificateNo { get; set; }
+    public string TransportPermitNo { get; set; }
+    public string SfscNo { get; set; }
+    public Production.TransportMode? TransportMode { get; set; }
+    public DateTime? TimePackedUtc { get; set; }
+    public FryDeliveryStatus Status { get; set; }
+
+    public bool IsStockingFinished { get; set; }
+
+    public DateTime? StockingFinishedAtUtc { get; set; }
+
+    public long PlNotStocked { get; set; }
+    public DateTime StatusChangedAtUtc { get; set; }
+
+    public bool IsStocked { get; set; }
+
+    public Guid? CycleId { get; set; }
+    public string CycleCode { get; set; }
+    public long PlStocked { get; set; }
+    public long PlLeft { get; set; }
+    public string RowVersion { get; set; }
+}
+
+public class FryDeliveryDetailDto : FryDeliveryDto
+{
+    public List<FryDeliveryStatusChangeDto> History { get; set; } = new();
+    public List<ShortfallDto> Shortfalls { get; set; } = new();
+    public string StockingFinishedBy { get; set; }
+    public bool CanEdit { get; set; }
+    public bool CanUpdateStatus { get; set; }
+
+    public bool CanFinishStocking { get; set; }
+}
+
+public class ShortfallDto
+{
+    public ShortfallReason Reason { get; set; }
+    public long Count { get; set; }
+    public string Note { get; set; }
+}
+
+public class ShortfallInput
+{
+    public ShortfallReason Reason { get; set; }
+
+    [Range(1, FryDelivery.MaxPl)]
+    public long Count { get; set; }
+
+    [StringLength(FryDeliveryShortfall.MaxNoteLength)]
+    public string Note { get; set; }
+}
+
+public class FinishStockingInput
+{
+    public Guid DeliveryId { get; set; }
+
+    public List<ShortfallInput> Shortfalls { get; set; } = new();
+
+    public string RowVersion { get; set; }
+}
+
+public class OpenDeliveryDto
+{
+    public Guid Id { get; set; }
+    public string HatcheryBatchNumber { get; set; }
+    public string HatcheryName { get; set; }
+    public DateOnly DeliveryDate { get; set; }
+    public long PlReceived { get; set; }
+    public long PlStocked { get; set; }
+    public Guid? CycleId { get; set; }
+    public string CycleCode { get; set; }
+}
+
+public class FryDeliveryStatusChangeDto
+{
+    public FryDeliveryStatus Status { get; set; }
+    public DateTime ChangedAtUtc { get; set; }
+    public string ChangedBy { get; set; }
+    public string Note { get; set; }
+}
+
+public class ReceiveFryInput
+{
+    public Guid DeliveryId { get; set; }
+
+    public DateTime? ReceivedAt { get; set; }
+
+    [Range(1, FryDelivery.MaxPl, ErrorMessage = "PL counted at the farm must be between 1 and 10,000,000.")]
+    public long PlReceived { get; set; }
+
+    [Range(1, 60, ErrorMessage = "PL age must be between 1 and 60 days.")]
+    public int? PlAgeDays { get; set; }
+
+    [StringLength(FryDelivery.MaxPermitLength)]
+    public string PlHealthCertificateNo { get; set; }
+
+    [StringLength(FryDelivery.MaxPermitLength)]
+    public string TransportPermitNo { get; set; }
+
+    [StringLength(FryDelivery.MaxPermitLength)]
+    public string SfscNo { get; set; }
+
+    public Production.TransportMode? TransportMode { get; set; }
+    public DateTime? TimePacked { get; set; }
+
+    [StringLength(FryDeliveryStatusChange.MaxNoteLength)]
+    public string Note { get; set; }
+}
+
+public class UndoDeliveryStepInput
+{
+    public Guid DeliveryId { get; set; }
+
+    [StringLength(FryDeliveryStatusChange.MaxNoteLength)]
+    public string Reason { get; set; }
+}
+
+public class UpdateFryDeliveryStatusInput
+{
+    public Guid DeliveryId { get; set; }
+    public FryDeliveryStatus Status { get; set; }
+
+    public DateTime? ChangedAt { get; set; }
+
+    [StringLength(FryDeliveryStatusChange.MaxNoteLength)]
+    public string Note { get; set; }
+}
+
+public class GetFryDeliveriesInput : PagedInput
+{
+    public Guid? HatcheryId { get; set; }
+    public FryDeliveryStatus? Status { get; set; }
+
+    public bool AvailableForStocking { get; set; }
+}
+
+public class SaveFryDeliveryResult
+{
+    public Guid Id { get; set; }
+    public List<WarningDto> Warnings { get; set; } = new();
+}
+
+[AbpAuthorize(PermissionNames.FryDeliveries)]
+public class FryDeliveryAppService : CapstoneAppServiceBase
+{
+    private readonly IRepository<FryDelivery, Guid> _deliveries;
+    private readonly IRepository<FryDeliveryStatusChange, Guid> _changes;
+    private readonly IRepository<HatcherySource, Guid> _hatcheries;
+    private readonly IRepository<ProductionCycle, Guid> _cycles;
+    private readonly IRepository<PondBatch, Guid> _batches;
+    private readonly IRepository<FryDeliveryShortfall, Guid> _shortfalls;
+    private readonly ReferenceData.FarmStandardsProvider _standards;
+
+    public FryDeliveryAppService(IRepository<FryDelivery, Guid> deliveries, IRepository<FryDeliveryStatusChange, Guid> changes,
+        IRepository<HatcherySource, Guid> hatcheries, IRepository<ProductionCycle, Guid> cycles, IRepository<PondBatch, Guid> batches,
+        IRepository<FryDeliveryShortfall, Guid> shortfalls, ReferenceData.FarmStandardsProvider standards)
+    {
+        _shortfalls = shortfalls;
+        _standards = standards;
+        _deliveries = deliveries;
+        _changes = changes;
+        _hatcheries = hatcheries;
+        _cycles = cycles;
+        _batches = batches;
+    }
+
+    private static readonly string[] DeliverySortKeys = { "deliveryDate", "hatcheryName", "hatcheryBatchNumber", "plReceived", "status" };
+
+    public virtual async Task<PagedResultDto<FryDeliveryDto>> GetAll(GetFryDeliveriesInput input)
+    {
+        var list = await FilteredAsync(input);
+        var sort = SortSpec.Parse(input.Sorting, DeliverySortKeys, "deliveryDate", true);
+        IOrderedEnumerable<FryDeliveryDto> ordered = sort.Key switch
+        {
+            "hatcheryName" => sort.Apply(list, d => d.HatcheryName ?? string.Empty),
+            "hatcheryBatchNumber" => sort.Apply(list, d => d.HatcheryBatchNumber ?? string.Empty),
+            "plReceived" => sort.Apply(list, d => d.PlReceived),
+            "status" => sort.Apply(list, d => (int)d.Status),
+            _ => sort.Apply(list, d => d.DeliveryDate),
+        };
+        return ordered.ThenBy(d => d.HatcheryBatchNumber).ToList().ToPage(input);
+    }
+
+    internal async Task<List<FryDeliveryDto>> ListAllAsync(GetFryDeliveriesInput input) =>
+        (await FilteredAsync(input)).OrderByDescending(d => d.DeliveryDate).ThenBy(d => d.HatcheryBatchNumber).ToList();
+
+    private async Task<List<FryDeliveryDto>> FilteredAsync(GetFryDeliveriesInput input)
+    {
+        var deliveries = await _deliveries.GetAll().AsNoTracking().Include(d => d.Hatchery)
+            .Where(d => !input.HatcheryId.HasValue || d.HatcheryId == input.HatcheryId)
+            .OrderByDescending(d => d.DeliveryDate).ThenBy(d => d.HatcheryBatchNumber).ToListAsync();
+        var list = await MapAsync(deliveries);
+        return list
+            .Where(d => SearchText.Matches(input.Search, d.HatcheryBatchNumber, d.HatcheryName, d.HatcheryShortCode, d.PlHealthCertificateNo, d.SfscNo))
+            .Where(d => !input.Status.HasValue || d.Status == input.Status)
+            .Where(d => !input.AvailableForStocking || (d.Status == FryDeliveryStatus.Received && !d.IsStocked && !d.IsStockingFinished))
+            .ToList();
+    }
+
+    public virtual async Task<List<StatusCountDto>> GetStatusCounts(GetFryDeliveriesInput input)
+    {
+        input.Status = null;
+        return (await FilteredAsync(input)).GroupBy(d => d.Status).Select(g => new StatusCountDto { Status = (int)g.Key, Count = g.Count() }).ToList();
+    }
+
+    public virtual async Task<FryDeliveryDetailDto> Get(Guid id)
+    {
+        var d = await _deliveries.GetAll().AsNoTracking().Include(x => x.Hatchery).FirstOrDefaultAsync(x => x.Id == id)
+                ?? throw new UserFriendlyException("Fry delivery not found.");
+        var dto = new FryDeliveryDetailDto();
+        Copy((await MapAsync(new List<FryDelivery> { d })).Single(), dto);
+        var changes = await _changes.GetAll().AsNoTracking().Where(c => c.DeliveryId == id).OrderByDescending(c => c.ChangedAtUtc).ThenByDescending(c => c.CreationTime).ToListAsync();
+        var names = await GetUserNamesAsync(changes.Select(c => c.CreatorUserId));
+        dto.History = changes.Select(c => new FryDeliveryStatusChangeDto { Status = c.Status, ChangedAtUtc = c.ChangedAtUtc, ChangedBy = NameOf(names, c.CreatorUserId), Note = c.Note }).ToList();
+        dto.Shortfalls = await _shortfalls.GetAll().AsNoTracking().Where(s => s.DeliveryId == id).OrderBy(s => s.Reason)
+            .Select(s => new ShortfallDto { Reason = s.Reason, Count = s.Count, Note = s.Note }).ToListAsync();
+        var finisher = await GetUserNamesAsync(new[] { d.StockingFinishedByUserId });
+        dto.StockingFinishedBy = NameOf(finisher, d.StockingFinishedByUserId);
+        dto.CanEdit = await IsGrantedAsync(PermissionNames.FryDeliveries_Manage);
+        dto.CanUpdateStatus = !dto.IsStocked && !dto.IsStockingFinished && await IsGrantedAsync(PermissionNames.FryDeliveries_UpdateStatus);
+        dto.CanFinishStocking = dto.IsStocked && !dto.IsStockingFinished && dto.CanEdit;
+        return dto;
+    }
+
+    [AbpAuthorize(PermissionNames.FryDeliveries_Manage)]
+    public virtual async Task FinishStocking(FinishStockingInput input)
+    {
+        var delivery = await _deliveries.GetAsync(input.DeliveryId);
+        Production.Concurrency.Check(delivery.RowVersion, input.RowVersion);
+        if (delivery.IsStockingFinished)
+        {
+            throw new UserFriendlyException("Stocking from this delivery is already finished.");
+        }
+
+        var cycle = await _cycles.GetAll().AsNoTracking().FirstOrDefaultAsync(c => c.FryDeliveryId == delivery.Id)
+                    ?? throw new UserFriendlyException("Nothing has been stocked from this delivery yet. Stock at least one pond first.");
+        var lines = input.Shortfalls ?? new List<ShortfallInput>();
+        foreach (var line in lines)
+        {
+            if (!Enum.IsDefined(line.Reason))
+            {
+                throw new UserFriendlyException("Choose a reason for each count of PL not stocked.");
+            }
+
+            if (line.Count <= 0)
+            {
+                throw new UserFriendlyException("Each count of PL not stocked must be greater than zero.");
+            }
+        }
+
+        if (lines.Select(l => l.Reason).Distinct().Count() != lines.Count)
+        {
+            throw new UserFriendlyException("Enter each reason once.");
+        }
+
+        var stocked = await _batches.GetAll().Where(b => b.CycleId == cycle.Id).SumAsync(b => b.PlCountStocked ?? 0);
+        var notStocked = lines.Sum(l => l.Count);
+        if (stocked + notStocked != delivery.PlReceived)
+        {
+            throw new UserFriendlyException(
+                $"Stocked {stocked:N0} + not stocked {notStocked:N0} = {stocked + notStocked:N0} PL, but {delivery.PlReceived:N0} PL were received. "
+                + $"Record {delivery.PlReceived - stocked:N0} PL as not stocked, split by reason.");
+        }
+
+        foreach (var line in lines)
+        {
+            await _shortfalls.InsertAsync(new FryDeliveryShortfall
+            {
+                DeliveryId = delivery.Id, Reason = line.Reason, Count = line.Count, Note = string.IsNullOrWhiteSpace(line.Note) ? null : line.Note.Trim(),
+            });
+        }
+
+        delivery.StockingFinishedAtUtc = DateTime.UtcNow;
+        delivery.StockingFinishedByUserId = AbpSession.UserId;
+    }
+
+    public virtual async Task<List<OpenDeliveryDto>> GetOpenWithPlLeft(bool includeToday = false)
+    {
+        var today = await Farm.GetTodayAsync();
+        var deliveries = await _deliveries.GetAll().AsNoTracking().Include(d => d.Hatchery)
+            .Where(d => d.StockingFinishedAtUtc == null && (d.DeliveryDate < today || (includeToday && d.DeliveryDate == today)))
+            .OrderBy(d => d.DeliveryDate).ToListAsync();
+        var mapped = await MapAsync(deliveries);
+        return mapped.Where(d => (d.IsStocked || d.Status == FryDeliveryStatus.Received) && d.PlStocked < d.PlReceived).Select(d => new OpenDeliveryDto
+        {
+            Id = d.Id, HatcheryBatchNumber = d.HatcheryBatchNumber, HatcheryName = d.HatcheryName, DeliveryDate = d.DeliveryDate,
+            PlReceived = d.PlReceived ?? 0, PlStocked = d.PlStocked, CycleId = d.CycleId, CycleCode = d.CycleCode,
+        }).ToList();
+    }
+
+    [AbpAuthorize(PermissionNames.FryDeliveries_Manage)]
+    public virtual async Task<SaveFryDeliveryResult> Create(FryDeliveryEditDto input)
+    {
+        var hatchery = await _hatcheries.FirstOrDefaultAsync(h => h.Id == input.HatcheryId) ?? throw new UserFriendlyException("Choose a hatchery.");
+        if (!hatchery.IsActive)
+        {
+            throw new UserFriendlyException($"The hatchery '{hatchery.Name}' is inactive.");
+        }
+
+        if (input.InitialStatus is not (FryDeliveryStatus.Received or FryDeliveryStatus.Ordered or FryDeliveryStatus.InTransit))
+        {
+            throw new UserFriendlyException("Record fry that have arrived, or an order that is not here yet.");
+        }
+
+        var arrived = input.InitialStatus == FryDeliveryStatus.Received;
+        var zone = await Farm.GetTimeZoneAsync();
+        DateTime? receivedAtUtc = null;
+        if (arrived)
+        {
+            if (!input.PlReceived.HasValue)
+            {
+                throw new UserFriendlyException("Enter the PL counted at the farm.");
+            }
+
+            var today = await Farm.GetTodayAsync();
+            if (!input.ReceivedAt.HasValue && input.DeliveryDate > today)
+            {
+                throw new UserFriendlyException("The fry have arrived, so the delivery date cannot be in the future.");
+            }
+
+            receivedAtUtc = input.ReceivedAt.HasValue ? FarmClock.ToUtc(input.ReceivedAt.Value)
+                : input.DeliveryDate == today || input.DeliveryDate == default ? DateTime.UtcNow
+                : FarmClock.StartOfDayUtc(input.DeliveryDate, zone);
+            if (receivedAtUtc > DateTime.UtcNow.AddMinutes(5))
+            {
+                throw new UserFriendlyException("The time the fry arrived cannot be in the future.");
+            }
+
+            input.DeliveryDate = FarmClock.LocalDate(receivedAtUtc.Value, zone);
+        }
+        else
+        {
+            if (!input.PlOrdered.HasValue)
+            {
+                throw new UserFriendlyException("Enter the PL ordered (PO). The farm's count is entered when the fry arrive.");
+            }
+
+            input.PlReceived = null;
+        }
+
+        await ValidateAsync(input, null);
+        var delivery = new FryDelivery { HatcheryId = hatchery.Id, ReceivedAtUtc = receivedAtUtc };
+        Apply(delivery, input);
+        var id = await _deliveries.InsertAndGetIdAsync(delivery);
+        await _changes.InsertAsync(new FryDeliveryStatusChange
+        {
+            DeliveryId = id, Status = input.InitialStatus, ChangedAtUtc = receivedAtUtc ?? DateTime.UtcNow, Note = arrived ? "Recorded at arrival" : "Order recorded",
+        });
+        return new SaveFryDeliveryResult { Id = id, Warnings = await WarningsAsync(input) };
+    }
+
+    [AbpAuthorize(PermissionNames.FryDeliveries_Manage)]
+    public virtual async Task<SaveFryDeliveryResult> Update(FryDeliveryEditDto input)
+    {
+        var delivery = await _deliveries.GetAsync(input.Id);
+        Production.Concurrency.Check(delivery.RowVersion, input.RowVersion);
+        var cycle = await _cycles.GetAll().AsNoTracking().FirstOrDefaultAsync(c => c.FryDeliveryId == delivery.Id);
+        if (input.HatcheryId != delivery.HatcheryId)
+        {
+            if (cycle != null)
+            {
+                throw new UserFriendlyException("The hatchery cannot change once a production cycle uses this delivery.");
+            }
+
+            var hatchery = await _hatcheries.FirstOrDefaultAsync(h => h.Id == input.HatcheryId) ?? throw new UserFriendlyException("Choose a hatchery.");
+            delivery.HatcheryId = hatchery.Id;
+        }
+
+        var arrived = await CurrentStatusAsync(delivery.Id) == FryDeliveryStatus.Received || cycle != null;
+        if (!arrived)
+        {
+            input.PlReceived = null;
+        }
+        else
+        {
+            if (!input.PlReceived.HasValue)
+            {
+                throw new UserFriendlyException("Enter the PL counted at the farm.");
+            }
+
+            if (input.DeliveryDate > await Farm.GetTodayAsync())
+            {
+                throw new UserFriendlyException("The fry have arrived, so the delivery date cannot be in the future.");
+            }
+        }
+
+        if (cycle != null)
+        {
+            var stocked = await _batches.GetAll().Where(b => b.CycleId == cycle.Id).SumAsync(b => b.PlCountStocked ?? 0);
+            if (input.PlReceived < stocked)
+            {
+                throw new UserFriendlyException($"PL received cannot be less than the {stocked:N0} PL already stocked from this delivery.");
+            }
+        }
+
+        if (delivery.IsStockingFinished && input.PlReceived != delivery.PlReceived)
+        {
+            throw new UserFriendlyException("PL received cannot change after Finish stocking; the delivery's counts already add up.");
+        }
+
+        await ValidateAsync(input, delivery.Id);
+        Apply(delivery, input);
+        return new SaveFryDeliveryResult { Id = delivery.Id, Warnings = await WarningsAsync(input) };
+    }
+
+    [AbpAuthorize(PermissionNames.FryDeliveries_UpdateStatus)]
+    public virtual async Task UpdateStatus(UpdateFryDeliveryStatusInput input)
+    {
+        var delivery = await _deliveries.GetAsync(input.DeliveryId);
+        var (current, lastAt) = await NextStepCheckAsync(delivery.Id, input.Status);
+        if (input.Status == FryDeliveryStatus.Received)
+        {
+            throw new UserFriendlyException("Use Receive fry: the count is entered when the fry arrive.");
+        }
+
+        var note = string.IsNullOrWhiteSpace(input.Note) ? null : input.Note.Trim();
+        if (FryDeliveryFlow.IsEnded(input.Status) && (note == null || note.Length < 3))
+        {
+            throw new UserFriendlyException(input.Status == FryDeliveryStatus.Cancelled ? "Say why the order was cancelled." : "Say why the fry were rejected.");
+        }
+
+        var changedAt = await StepTimeAsync(input.ChangedAt, lastAt);
+        await _changes.InsertAsync(new FryDeliveryStatusChange { DeliveryId = delivery.Id, Status = input.Status, ChangedAtUtc = changedAt, Note = note });
+    }
+
+    [AbpAuthorize(PermissionNames.FryDeliveries_UpdateStatus)]
+    public virtual async Task Receive(ReceiveFryInput input)
+    {
+        var delivery = await _deliveries.GetAsync(input.DeliveryId);
+        var (_, lastAt) = await NextStepCheckAsync(delivery.Id, FryDeliveryStatus.Received);
+        var receivedAtUtc = await StepTimeAsync(input.ReceivedAt, lastAt);
+        DateTime? packedUtc = input.TimePacked.HasValue ? FarmClock.ToUtc(input.TimePacked.Value) : delivery.TimePackedUtc;
+        if (packedUtc > receivedAtUtc)
+        {
+            throw new UserFriendlyException("The time packed cannot be after the fry arrived.");
+        }
+
+        if (input.TransportMode.HasValue && !Enum.IsDefined(input.TransportMode.Value))
+        {
+            throw new UserFriendlyException("Choose how the fry travelled, or leave it blank.");
+        }
+
+        var zone = await Farm.GetTimeZoneAsync();
+        delivery.PlReceived = input.PlReceived;
+        delivery.ReceivedAtUtc = receivedAtUtc;
+        delivery.DeliveryDate = FarmClock.LocalDate(receivedAtUtc, zone);
+        delivery.PlAgeDays = input.PlAgeDays ?? delivery.PlAgeDays;
+        delivery.TimePackedUtc = packedUtc;
+        delivery.TransportMode = input.TransportMode ?? delivery.TransportMode;
+        delivery.PlHealthCertificateNo = Keep(input.PlHealthCertificateNo, delivery.PlHealthCertificateNo);
+        delivery.TransportPermitNo = Keep(input.TransportPermitNo, delivery.TransportPermitNo);
+        delivery.SfscNo = Keep(input.SfscNo, delivery.SfscNo);
+        await _changes.InsertAsync(new FryDeliveryStatusChange
+        {
+            DeliveryId = delivery.Id, Status = FryDeliveryStatus.Received, ChangedAtUtc = receivedAtUtc,
+            Note = string.IsNullOrWhiteSpace(input.Note) ? null : input.Note.Trim(),
+        });
+
+        static string Keep(string typed, string current) => string.IsNullOrWhiteSpace(typed) ? current : typed.Trim();
+    }
+
+    [AbpAuthorize(PermissionNames.FryDeliveries_Manage)]
+    public virtual async Task UndoLastStep(UndoDeliveryStepInput input)
+    {
+        var delivery = await _deliveries.GetAsync(input.DeliveryId);
+        if (await _cycles.GetAll().AnyAsync(c => c.FryDeliveryId == delivery.Id))
+        {
+            throw new UserFriendlyException("This delivery is already stocked into a production cycle; its steps can no longer change.");
+        }
+
+        var reason = input.Reason?.Trim();
+        if (string.IsNullOrEmpty(reason) || reason.Length < 3)
+        {
+            throw new UserFriendlyException("Say why the step is taken back.");
+        }
+
+        var steps = await _changes.GetAll().Where(c => c.DeliveryId == delivery.Id).OrderByDescending(c => c.ChangedAtUtc).ThenByDescending(c => c.CreationTime).ToListAsync();
+        if (steps.Count < 2)
+        {
+            throw new UserFriendlyException("This is the delivery's first step; edit or delete the delivery instead.");
+        }
+
+        var last = steps[0];
+        var note = $"Taken back: {reason}";
+        last.Note = string.IsNullOrEmpty(last.Note) ? note : $"{last.Note} · {note}";
+        if (last.Note.Length > FryDeliveryStatusChange.MaxNoteLength)
+        {
+            last.Note = last.Note[..FryDeliveryStatusChange.MaxNoteLength];
+        }
+
+        await CurrentUnitOfWork.SaveChangesAsync();
+        await _changes.DeleteAsync(last);
+        if (last.Status == FryDeliveryStatus.Received)
+        {
+            delivery.PlReceived = null;
+            delivery.ReceivedAtUtc = null;
+        }
+    }
+
+    private async Task<(FryDeliveryStatus Current, DateTime LastAt)> NextStepCheckAsync(Guid deliveryId, FryDeliveryStatus next)
+    {
+        if (!Enum.IsDefined(next))
+        {
+            throw new UserFriendlyException("Choose the next step.");
+        }
+
+        if (await _cycles.GetAll().AnyAsync(c => c.FryDeliveryId == deliveryId))
+        {
+            throw new UserFriendlyException("This delivery is already stocked into a production cycle; its status can no longer change.");
+        }
+
+        var last = await _changes.GetAll().Where(c => c.DeliveryId == deliveryId).OrderByDescending(c => c.ChangedAtUtc).ThenByDescending(c => c.CreationTime)
+            .Select(c => new { c.Status, c.ChangedAtUtc }).FirstOrDefaultAsync();
+        var current = last?.Status ?? FryDeliveryStatus.Ordered;
+        if (!FryDeliveryFlow.Next(current).Contains(next))
+        {
+            throw new UserFriendlyException(FryDeliveryFlow.IsEnded(current)
+                ? $"The delivery is {Label(current)}; it takes no further steps."
+                : $"A delivery that is {Label(current)} cannot become {Label(next)}.");
+        }
+
+        return (current, last?.ChangedAtUtc ?? DateTime.MinValue);
+    }
+
+    private static Task<DateTime> StepTimeAsync(DateTime? typed, DateTime previousUtc)
+    {
+        var at = typed.HasValue ? FarmClock.ToUtc(typed.Value) : DateTime.UtcNow;
+        if (at > DateTime.UtcNow.AddMinutes(5))
+        {
+            throw new UserFriendlyException("The time cannot be in the future.");
+        }
+
+        if (at < previousUtc)
+        {
+            throw new UserFriendlyException("The time cannot be before the delivery's previous step.");
+        }
+
+        return Task.FromResult(at);
+    }
+
+    public static string Label(FryDeliveryStatus status) => status switch
+    {
+        FryDeliveryStatus.InTransit => "In transit",
+        _ => status.ToString(),
+    };
+
+    internal async Task<FryDeliveryStatus?> CurrentStatusAsync(Guid deliveryId) =>
+        await _changes.GetAll().Where(c => c.DeliveryId == deliveryId)
+            .OrderByDescending(c => c.ChangedAtUtc).ThenByDescending(c => c.CreationTime)
+            .Select(c => (FryDeliveryStatus?)c.Status).FirstOrDefaultAsync();
+
+    private async Task ValidateAsync(FryDeliveryEditDto input, Guid? exceptId)
+    {
+        var number = input.HatcheryBatchNumber.Trim();
+        if (await _deliveries.GetAll().AnyAsync(d => d.HatcheryId == input.HatcheryId && d.HatcheryBatchNumber == number && d.Id != exceptId))
+        {
+            throw new UserFriendlyException($"Batch number '{number}' is already recorded for this hatchery.");
+        }
+
+        if (input.DeliveryDate > (await Farm.GetTodayAsync()).AddDays(60))
+        {
+            throw new UserFriendlyException("The delivery date is too far in the future.");
+        }
+
+        if (input.TransportMode.HasValue && !Enum.IsDefined(input.TransportMode.Value))
+        {
+            throw new UserFriendlyException("Choose how the fry travelled, or leave it blank.");
+        }
+
+        if (input.TimePacked.HasValue)
+        {
+            var packed = FarmClock.ToUtc(input.TimePacked.Value);
+            var endOfDelivery = FarmClock.StartOfDayUtc(input.DeliveryDate.AddDays(1), await Farm.GetTimeZoneAsync());
+            if (packed > DateTime.UtcNow.AddMinutes(5) || packed >= endOfDelivery)
+            {
+                throw new UserFriendlyException("The time packed cannot be after the delivery day or in the future. Check the date, or leave it blank.");
+            }
+        }
+    }
+
+    private async Task<List<WarningDto>> WarningsAsync(FryDeliveryEditDto input)
+    {
+        var list = new List<WarningDto>();
+        var min = await _standards.GetAsync(ReferenceData.FarmThresholds.PlAgeMin);
+        var max = await _standards.GetAsync(ReferenceData.FarmThresholds.PlAgeMax);
+        if (input.PlAgeDays.HasValue && (input.PlAgeDays < min || input.PlAgeDays > max))
+        {
+            list.Add(new WarningDto { Kind = "PlAge", Message = $"PL{input.PlAgeDays} is outside the farm's PL{min:0}–PL{max:0} range for stocking (Farm Standards)." });
+        }
+
+        return list;
+    }
+
+    private static void Apply(FryDelivery d, FryDeliveryEditDto input)
+    {
+        d.HatcheryBatchNumber = input.HatcheryBatchNumber.Trim();
+        d.DeliveryDate = input.DeliveryDate;
+        d.PlAgeDays = input.PlAgeDays;
+        d.PlReceived = input.PlReceived;
+        d.PlOrdered = input.PlOrdered;
+        d.CostPhp = input.CostPhp;
+        d.Notes = string.IsNullOrWhiteSpace(input.Notes) ? null : input.Notes.Trim();
+        d.PlHealthCertificateNo = string.IsNullOrWhiteSpace(input.PlHealthCertificateNo) ? null : input.PlHealthCertificateNo.Trim();
+        d.TransportPermitNo = string.IsNullOrWhiteSpace(input.TransportPermitNo) ? null : input.TransportPermitNo.Trim();
+        d.SfscNo = string.IsNullOrWhiteSpace(input.SfscNo) ? null : input.SfscNo.Trim();
+        d.TransportMode = input.TransportMode;
+        d.TimePackedUtc = input.TimePacked.HasValue ? FarmClock.ToUtc(input.TimePacked.Value) : null;
+    }
+
+    private async Task<List<FryDeliveryDto>> MapAsync(List<FryDelivery> deliveries)
+    {
+        var ids = deliveries.Select(d => d.Id).ToList();
+        var changes = await _changes.GetAll().AsNoTracking().Where(c => ids.Contains(c.DeliveryId))
+            .Select(c => new { c.DeliveryId, c.Status, c.ChangedAtUtc, c.CreationTime }).ToListAsync();
+        var cycles = await _cycles.GetAll().AsNoTracking().Where(c => ids.Contains(c.FryDeliveryId))
+            .Select(c => new { c.Id, c.FryDeliveryId, c.CycleCode }).ToListAsync();
+        var cycleIds = cycles.Select(c => c.Id).ToList();
+        var stocked = await _batches.GetAll().Where(b => cycleIds.Contains(b.CycleId))
+            .GroupBy(b => b.CycleId).Select(g => new { CycleId = g.Key, Pl = g.Sum(b => b.PlCountStocked ?? 0) }).ToListAsync();
+        var shortfalls = await _shortfalls.GetAll().Where(s => ids.Contains(s.DeliveryId))
+            .GroupBy(s => s.DeliveryId).Select(g => new { DeliveryId = g.Key, Pl = g.Sum(s => s.Count) }).ToListAsync();
+        return deliveries.Select(d =>
+        {
+            var latest = changes.Where(c => c.DeliveryId == d.Id).OrderByDescending(c => c.ChangedAtUtc).ThenByDescending(c => c.CreationTime).FirstOrDefault();
+            var cycle = cycles.FirstOrDefault(c => c.FryDeliveryId == d.Id);
+            var pl = cycle == null ? 0 : stocked.FirstOrDefault(s => s.CycleId == cycle.Id)?.Pl ?? 0;
+            return new FryDeliveryDto
+            {
+                Id = d.Id, HatcheryId = d.HatcheryId, HatcheryName = d.Hatchery?.Name, HatcheryShortCode = d.Hatchery?.ShortCode,
+                HatcheryBatchNumber = d.HatcheryBatchNumber, DeliveryDate = d.DeliveryDate, PlAgeDays = d.PlAgeDays, PlReceived = d.PlReceived, PlOrdered = d.PlOrdered,
+                ReceivedAtUtc = d.ReceivedAtUtc,
+                CostPhp = d.CostPhp, Notes = d.Notes, Status = latest?.Status ?? FryDeliveryStatus.Ordered, StatusChangedAtUtc = latest?.ChangedAtUtc ?? d.CreationTime,
+                PlHealthCertificateNo = d.PlHealthCertificateNo, TransportPermitNo = d.TransportPermitNo, SfscNo = d.SfscNo,
+                TransportMode = d.TransportMode, TimePackedUtc = d.TimePackedUtc,
+                IsStockingFinished = d.IsStockingFinished, StockingFinishedAtUtc = d.StockingFinishedAtUtc,
+                PlNotStocked = shortfalls.FirstOrDefault(s => s.DeliveryId == d.Id)?.Pl ?? 0,
+                IsStocked = cycle != null, CycleId = cycle?.Id, CycleCode = cycle?.CycleCode, PlStocked = pl,
+                PlLeft = (d.PlReceived ?? 0) - pl - (shortfalls.FirstOrDefault(s => s.DeliveryId == d.Id)?.Pl ?? 0),
+                RowVersion = Production.Concurrency.Encode(d.RowVersion),
+            };
+        }).ToList();
+    }
+
+    private static void Copy(FryDeliveryDto from, FryDeliveryDto to)
+    {
+        foreach (var p in typeof(FryDeliveryDto).GetProperties())
+        {
+            p.SetValue(to, p.GetValue(from));
+        }
+    }
+}

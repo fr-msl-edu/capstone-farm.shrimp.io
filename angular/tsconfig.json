@@ -1,0 +1,14 @@
+{
+    "compilerOptions": {
+        "esModuleInterop": true
+    },
+    "files": [],
+    "references": [
+        {
+            "path": "./src/tsconfig.app.json"
+        }
+    ],
+    "include": [
+        "src/**/*.ts"
+    ]
+}
